@@ -13,7 +13,6 @@
 # License: MIT
 #
 ###########################################################
-from threading import Thread
 
 from raw_to_wav import rawToWav
 
@@ -231,7 +230,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
         return rms
 
     def version( self ):
-        return "0.1"
+        return "1.0"
 
 
     # use this method to manually start recording (without autodetection) for a given time
