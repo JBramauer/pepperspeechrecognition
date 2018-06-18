@@ -89,4 +89,4 @@ class Recognizer :
             best_hypothesis = actual_result["alternative"][0]
         if "transcript" not in best_hypothesis:
             raise UnknownValueError()
-        return best_hypothesis["transcript"]
+        return best_hypothesis["transcript"].encode("utf-8")
