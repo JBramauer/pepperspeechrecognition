@@ -116,9 +116,8 @@ def main():
     SpeechRecognition.start()
     #SpeechRecognition.setLanguage("de-de")
     SpeechRecognition.calibrate()
-    SpeechRecognition.enableAutoDetection(20)
-
-    #SpeechRecognition.startRecording(20) # use this to start recording for 20 seconds (intended to use without auto-detection)
+    SpeechRecognition.enableAutoDetection()
+    #SpeechRecognition.startRecording()
 
     try:
         while True:

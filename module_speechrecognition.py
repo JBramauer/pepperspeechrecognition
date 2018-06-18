@@ -146,11 +146,20 @@ class SpeechRecognitionModule(naoqi.ALModule):
             aSoundData = np.reshape( aSoundDataInterlaced, (nbOfChannels, nbrOfSamplesByChannel), 'F' )
 
             # compute RMS, handle autodetection and calibration
-            if( self.isCalibrating | self.isAutoDetectionEnabled):
+            if( self.isCalibrating or self.isAutoDetectionEnabled or self.isRecording):
 
                 # compute the rms level on front mic
                 rmsMicFront = self.calcRMSLevel(self.convertStr2SignedInt(aSoundData[0]))
 
+                if (rmsMicFront >= self.autoDetectionThreshold):
+                    # save timestamp when we last had and RMS > threshold
+                    self.lastTimeRMSPeak = aTimeStamp[0]
+
+                    # start recording if we are not doing so already
+                    if (self.isAutoDetectionEnabled and not self.isRecording and not self.isCalibrating):
+                        self.startRecording()
+
+                # perform calibration
                 if( self.isCalibrating):
 
                     if(self.startCalibrationTimestamp <= 0):
@@ -167,22 +176,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                     # to calculate mean afterwards
                     self.rmsSum += rmsMicFront
                     self.framesCount = self.framesCount + 1
-                else :
-                    # handle auto detection here
-                    if (self.isAutoDetectionEnabled):
 
-                        if(rmsMicFront >= self.autoDetectionThreshold):
-                            # save timestamp when we last had and RMS > threshold
-                            self.lastTimeRMSPeak = aTimeStamp[0]
-
-                            # start recording if we are not doing so already
-                            if(not self.isRecording):
-                                self.startRecording()
-
-                        elif(self.isRecording and self.lastTimeRMSPeak > 0 and (aTimeStamp[0] - self.lastTimeRMSPeak  >= self.idleReleaseTime) and (aTimeStamp[0] - self.startRecordingTimestamp > self.holdTime)):
-                            # rms has not been > threshold for at least idle time
-                            # so stop recording
-                            self.stopRecordingAndRecognize()
 
                 if(PRINT_RMS):
                     # for debug purposes
@@ -205,7 +199,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                 if( aPeakValue > 16000 ):
                     print( "Peak: %s" % aPeakValue )
 
-            if(self.isRecording):
+            if(self.isRecording and not self.isCalibrating):
                 # write to buffer
                 self.buffer.append(aSoundData)
 
@@ -214,6 +208,16 @@ class SpeechRecognitionModule(naoqi.ALModule):
                     self.startRecordingTimestamp = aTimeStamp[0]
                 elif ((aTimeStamp[0] - self.startRecordingTimestamp) > self.recordingDuration):
                     # check how long we are recording
+                    self.stopRecordingAndRecognize()
+
+                # stop recording after idle time (and recording at least hold time)
+                # lastTimeRMSPeak is 0 if no peak occured
+                if (aTimeStamp[0] - self.lastTimeRMSPeak >= self.idleReleaseTime) and (
+                        aTimeStamp[0] - self.startRecordingTimestamp >= self.holdTime):
+                    print ('stopping after idle/hold time')
+                    print self.lastTimeRMSPeak
+                    print aTimeStamp[0]
+                    print self.startRecordingTimestamp
                     self.stopRecordingAndRecognize()
             else:
                 # constantly record into prebuffer for lookahead
@@ -239,15 +243,13 @@ class SpeechRecognitionModule(naoqi.ALModule):
         return "1.0"
 
 
-    # use this method to manually start recording (without autodetection) for a given time
-    # if autodetection is enabled this will start recording but stop after the signal is below
-    # the threshold for IDLE_RELEASE_TIME seconds
-    def startRecording(self, duration=RECORDING_DURATION):
+    # use this method to manually start recording (works with both autodetection enabled or disabled)
+    # the recording will stop after the signal is below the threshold for IDLE_RELEASE_TIME seconds,
+    # but will at least record for HOLD_TIME seconds
+    def startRecording(self):
         if(self.isRecording):
             print("INF: SpeechRecognitionModule.startRecording: already recording")
             return
-
-        self.recordingDuration = duration
 
         print("INF: Starting to record audio")
 
