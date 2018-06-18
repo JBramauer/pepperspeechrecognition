@@ -112,12 +112,28 @@ def main():
     ReceiverTestModule = ReceiverTestModule("ReceiverTestModule", pip)
     ReceiverTestModule.start()
 
-    SpeechRecognition = ALProxy("SpeechRecognition")
-    SpeechRecognition.start()
-    #SpeechRecognition.setLanguage("de-de")
-    SpeechRecognition.calibrate()
-    SpeechRecognition.enableAutoDetection()
-    #SpeechRecognition.startRecording()
+    if(False):
+        #one-shot recording for at least 5 seconds
+        SpeechRecognition = ALProxy("SpeechRecognition")
+        SpeechRecognition.start()
+        SpeechRecognition.setHoldTime(5)
+        SpeechRecognition.setIdleReleaseTime(1.7)
+        SpeechRecognition.setMaxRecordingDuration(10)
+        SpeechRecognition.startRecording()
+
+    else:
+        # auto-detection
+        SpeechRecognition = ALProxy("SpeechRecognition")
+        SpeechRecognition.start()
+        SpeechRecognition.setHoldTime(2.5)
+        SpeechRecognition.setIdleReleaseTime(1.0)
+        SpeechRecognition.setMaxRecordingDuration(10)
+        SpeechRecognition.setLookaheadDuration(0.5)
+        #SpeechRecognition.setLanguage("de-de")
+        #SpeechRecognition.calibrate()
+        SpeechRecognition.setAutoDetectionThreshold(5)
+        SpeechRecognition.enableAutoDetection()
+        #SpeechRecognition.startRecording()
 
     try:
         while True:
