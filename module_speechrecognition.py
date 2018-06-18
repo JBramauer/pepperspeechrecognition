@@ -34,6 +34,7 @@ import traceback
 RECORDING_DURATION = 25     # seconds, maximum recording time, also default value for startRecording()
 LOOKAHEAD_DURATION = 0.5    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
 IDLE_RELEASE_TIME = 3       # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
+HOLD_TIME = 3               # seconds, minimum recording time after we started recording (autodetection)
 SAMPLE_RATE = 48000         # Hz, be careful changing this, both google and Naoqi have requirements!
 
 CALIBRATION_DURATION = 4    # seconds, timespan during which calibration is performed (summing up RMS values and calculating mean)
@@ -41,7 +42,7 @@ CALIBRATION_THRESHOLD_FACTOR = 1.5  # factor the calculated mean RMS gets multip
 
 DEFAULT_LANGUAGE = "en-us"  # RFC5646 language tag, e.g. "en-us", "de-de", "fr-fr",... <http://stackoverflow.com/a/14302134>
 
-WRITE_WAV_FILE = True       # write the recorded audio to "out.wav" before sending it to google. intended for debugging purposes
+WRITE_WAV_FILE = False       # write the recorded audio to "out.wav" before sending it to google. intended for debugging purposes
 PRINT_RMS = False           # prints the calculated RMS value to the console, useful for setting the threshold
 
 
@@ -94,6 +95,11 @@ class SpeechRecognitionModule(naoqi.ALModule):
             self.buffer = []
             self.preBuffer = []
             self.preBufferLength = 0
+
+            # init parameters
+            self.language = DEFAULT_LANGUAGE
+            self.idleReleaseTime = IDLE_RELEASE_TIME
+            self.holdTime = HOLD_TIME
 
         except BaseException, err:
             print( "ERR: SpeechRecognitionModule: loading error: %s" % str(err) )
@@ -173,7 +179,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                             if(not self.isRecording):
                                 self.startRecording()
 
-                        elif(self.isRecording and self.lastTimeRMSPeak > 0 and (aTimeStamp[0] - self.lastTimeRMSPeak  >= IDLE_RELEASE_TIME)):
+                        elif(self.isRecording and self.lastTimeRMSPeak > 0 and (aTimeStamp[0] - self.lastTimeRMSPeak  >= self.idleReleaseTime) and (aTimeStamp[0] - self.startRecordingTimestamp > self.holdTime)):
                             # rms has not been > threshold for at least idle time
                             # so stop recording
                             self.stopRecordingAndRecognize()
@@ -303,9 +309,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
         print 'calibration done, RMS threshold is: ' + str(self.threshold)
         return
 
-    def enableAutoDetection(self, maxDuration=RECORDING_DURATION):
+    def enableAutoDetection(self):
         self.isAutoDetectionEnabled = True
-        self.recordingDuration = maxDuration
         print("INF: autoDetection enabled")
         return
 
@@ -367,6 +372,16 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
     def setAutoDetectionThreshold(self, threshold):
         self.autoDetectionThreshold = threshold
+
+    def setIdleReleaseTime(self, releaseTime):
+        self.idleReleaseTime = releaseTime
+
+    def setHoldTime(self, holdTime):
+        self.holdTime = holdTime
+
+    def setMaxRecordingDuration(self, duration):
+        self.recordingDuration = duration
+
 
 # SpeechRecognition - end
 

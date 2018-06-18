@@ -18,7 +18,7 @@ NAO_PORT = 9559 # Robot
 
 
 # NAO_IP = "127.0.0.1" # Virtual Machine
-NAO_IP = "nao.local" # Pepper
+NAO_IP = "nao.local" # Pepper default
 
 
 from optparse import OptionParser
@@ -116,7 +116,7 @@ def main():
     SpeechRecognition.start()
     #SpeechRecognition.setLanguage("de-de")
     SpeechRecognition.calibrate()
-    SpeechRecognition.enableAutoDetection()
+    SpeechRecognition.enableAutoDetection(20)
 
     #SpeechRecognition.startRecording(20) # use this to start recording for 20 seconds (intended to use without auto-detection)
 
