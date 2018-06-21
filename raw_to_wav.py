@@ -22,7 +22,7 @@ def rawToWav(filename):
 
     f = open(rawfile, "rb")
     sample = f.read(4096)
-    print 'start conversion: ' + rawfile
+    print 'writing file: ' + filename + '.wav'
 
     while sample != "":
         outfile.writeframes(sample)
