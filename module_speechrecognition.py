@@ -400,9 +400,16 @@ class SpeechRecognitionModule(naoqi.ALModule):
         buffer = np.getbuffer(data)
 
         r = Recognizer()
-        result = r.recognize_google(audio_data=buffer, samplerate=SAMPLE_RATE, language=self.language)
-        self.memory.raiseEvent("SpeechRecognition", result)
-        return result
+        try:
+            result = r.recognize_google(audio_data=buffer, samplerate=SAMPLE_RATE, language=self.language)
+            self.memory.raiseEvent("SpeechRecognition", result)
+            print result
+        except UnknownValueError:
+            print 'ERROR: Recognition error'
+        except RequestError, e:
+            print 'ERROR: ' + str(e)
+        except:
+            print 'ERROR: Unknown, probably timeout'
 
     def setAutoDetectionThreshold(self, threshold):
         self.autoDetectionThreshold = threshold
