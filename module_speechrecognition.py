@@ -131,16 +131,21 @@ class SpeechRecognitionModule(naoqi.ALModule):
         audio.setClientPreferences( self.getName(),  SAMPLE_RATE, nNbrChannelFlag, nDeinterleave ) # setting same as default generate a bug !?!
         audio.subscribe( self.getName() )
 
-    def stop( self ):
-
-        if(self.isStarted == False):
+    def pause(self):
+        print("INF: SpeechRecognitionModule.pause: stopping")
+        if (self.isStarted == False):
             print("INF: SpeechRecognitionModule.stop: not running")
             return
 
-        audio = naoqi.ALProxy( "ALAudioDevice")
-        audio.unsubscribe( self.getName() )
+        self.isStarted = False
 
-        print( "INF: SpeechRecognitionModule: stopped!" )
+        audio = naoqi.ALProxy("ALAudioDevice", self.strNaoIp, NAO_PORT)
+        audio.unsubscribe(self.getName())
+
+        print("INF: SpeechRecognitionModule: stopped!")
+
+    def stop( self ):
+        self.pause()
 
     def processRemote( self, nbOfChannels, nbrOfSamplesByChannel, aTimeStamp, buffer ):
         #print("INF: SpeechRecognitionModule: Processing '%s' channels" % nbOfChannels)
