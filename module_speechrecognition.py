@@ -94,7 +94,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
             self.lastTimeRMSPeak = 0
 
             # audio buffer
-            self.buffer = []
+            self.currentJob = RecognitionJob()
             self.preBuffer = []
             self.preBufferLength = 0    # length in samples (len(self.preBuffer) just counts entries)
 
@@ -211,7 +211,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
             if(not self.isCalibrating):
                 if(self.isRecording):
                     # write to buffer
-                    self.buffer.append(aSoundData)
+                    self.currentJob.buffer.append(aSoundData)
 
                     if (self.startRecordingTimestamp <= 0):
                         # initialize timestamp when we start recording
@@ -268,9 +268,10 @@ class SpeechRecognitionModule(naoqi.ALModule):
         # start recording
         self.startRecordingTimestamp = 0
         self.lastTimeRMSPeak = 0
-        self.buffer = self.preBuffer
+        self.currentJob.setBuffer(self.preBuffer)
 
-        #self.preBuffer = []
+        # immediately release so we don't need to copy preBuffer when passing to RecognitionJob
+        self.preBuffer = []
 
         self.isRecording = True
 
@@ -282,13 +283,6 @@ class SpeechRecognitionModule(naoqi.ALModule):
             return
 
         print("INF: stopping recording and recognizing")
-
-        # TODO: choose which mic channel to use
-        # can we use the sound direction module for this?
-
-        # buffer is a list of nparrays we now concat into one array
-        # and the slice out the first mic channel
-        slice = np.concatenate(self.buffer, axis=1)[0]
 
         # initialize preBuffer with last samples to fix cut off words
         # loop through buffer and count samples until prebuffer is full
@@ -305,8 +299,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
                 itemCounter += 1
 
-            start = len(self.buffer) - itemCounter
-            self.preBuffer = self.buffer[start:]
+            start = len(self.currentJob.buffer) - itemCounter
+            self.preBuffer = self.currentJob.buffer[start:]
         else:
             # don't copy to prebuffer
             self.preBuffer = []
@@ -317,8 +311,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
         # threading.Thread(target=self.recognize, args=(slice.copy(), )).start()
 
         # Queue is thread safe
-        job = RecognitionJob(slice.copy())
-        self.jobQueue.put(job)
+        self.jobQueue.put(self.currentJob)
+        self.currentJob = RecognitionJob()
 
         # reset flag
         self.isRecording = False
@@ -429,26 +423,36 @@ class SpeechRecognitionModule(naoqi.ALModule):
         while True:
             item = self.jobQueue.get()
             if item is None:
+                # stop thread
                 break
 
             try:
-                item.result = self.recognize(item.audio_data)
+                data = item.getAudioData()
+                item.started = time.time()
+                item.result = self.recognize(data.copy()) # for whatever reason we need to copy here to make it work
+                item.finished = time.time()
                 item.success = True
                 print 'RESULT: ' + item.result
             except UnknownValueError:
+                item.finished = time.time()
                 item.success = False
-                print 'ERROR: Recognition error'
+                print 'ERR: Recognition error'
             except RequestError, e:
+                item.finished = time.time()
                 item.success = False
-                print 'ERROR: ' + str(e)
-            except:
+                print 'ERR: ' + str(e)
+            except TypeError, e:
+                item.finished = time.time()
                 item.success = False
-                print 'ERROR: Unknown, probably timeout'
+                print 'ERR: Type ' + str(e)
+            except :
+                item.finished = time.time()
+                item.success = False
+                print 'ERR: Unknown, probably timeout ' + str(sys.exc_info()[0])
 
             print 'INF: audio file length: ' + str(item.getAudioDuration()) + ' seconds'
 
-            item.finished = time.time()
-            duration = item.finished - item.created
+            duration = item.finished - item.started
 
             print('INF: Recognition time: ' + str(duration) + ' seconds')
 
@@ -458,15 +462,35 @@ class SpeechRecognitionModule(naoqi.ALModule):
 # SpeechRecognition - end
 
 class RecognitionJob:
-    def __init__(self, audio_data):
-        self.audio_data = audio_data
+    def __init__(self):
+        self.buffer = []
+        self.audio_data = []
         self.result = ''
-        self.created = time.time()
+        self.started = 0
         self.finished = 0
         self.success = False
 
+    def setBuffer(self, buffer):
+        self.buffer = buffer
+
     def getAudioDuration(self):
-        return len(self.audio_data)/48000.0
+        return len(self.audio_data)/float(SAMPLE_RATE)
+
+    def getAudioData(self):
+        # TODO: choose which mic channel to use
+        # can we use the sound direction module for this?
+
+        # buffer is a list of nparrays we now concat into one array
+        # and the slice out the first mic channel
+        self.audio_data = np.concatenate(self.buffer, axis=1)[0]
+
+        # since we now extracted the audio data we can free some memory
+        #self.clearBuffer()
+
+        return self.audio_data
+
+    def clearBuffer(self):
+        self.buffer = []
 
 def main():
     """ Main entry point
