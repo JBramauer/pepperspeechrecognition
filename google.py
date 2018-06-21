@@ -24,6 +24,7 @@
 from urllib import urlencode
 from urllib2 import Request, urlopen, URLError, HTTPError
 import json
+import socket
 
 class RequestError(Exception): pass
 
@@ -54,6 +55,9 @@ class Recognizer :
             "lang": language,
             "key": key,
         }))
+
+        # set default request timeout to 10 seconds to avoid getting stuck
+        socket.setdefaulttimeout(20)
 
         request = Request(url, data=audio_data,
                           headers={"Content-Type": "{}; rate={}".format(contentType, samplerate)})
