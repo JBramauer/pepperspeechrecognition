@@ -49,14 +49,14 @@ class ReceiverTestModule(naoqi.ALModule):
         self.stop()
 
     def start( self ):
-        memory = naoqi.ALProxy("ALMemory", NAO_IP, NAO_PORT)
+        memory = naoqi.ALProxy("ALMemory", self.strNaoIp, NAO_PORT)
         memory.subscribeToEvent("SpeechRecognition", self.getName(), "processRemote")
         print( "INF: ReceiverModule: started!" )
 
 
     def stop( self ):
         print( "INF: ReceiverModule: stopping..." )
-        memory = naoqi.ALProxy("ALMemory", NAO_IP, NAO_PORT)
+        memory = naoqi.ALProxy("ALMemory", self.strNaoIp, NAO_PORT)
         memory.unsubscribe(self.getName())
 
         print( "INF: ReceiverModule: stopped!" )
