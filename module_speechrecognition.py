@@ -13,6 +13,7 @@
 # License: MIT
 #
 ###########################################################
+import socket
 
 from raw_to_wav import rawToWav
 
@@ -403,13 +404,15 @@ class SpeechRecognitionModule(naoqi.ALModule):
         try:
             result = r.recognize_google(audio_data=buffer, samplerate=SAMPLE_RATE, language=self.language)
             self.memory.raiseEvent("SpeechRecognition", result)
-            print result
+            print 'RESULT: ' + result
         except UnknownValueError:
-            print 'ERROR: Recognition error'
+            print 'ERR: Recognition error'
         except RequestError, e:
-            print 'ERROR: ' + str(e)
+            print 'ERR: ' + str(e)
+        except socket.timeout:
+            print 'ERR: Socket timeout'
         except:
-            print 'ERROR: Unknown, probably timeout'
+            print 'ERR: Unknown, probably timeout ' + str(sys.exc_info()[0])
 
     def setAutoDetectionThreshold(self, threshold):
         self.autoDetectionThreshold = threshold
