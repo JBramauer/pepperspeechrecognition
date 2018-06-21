@@ -31,7 +31,7 @@ from numpy import sqrt, mean, square
 import traceback
 
 
-RECORDING_DURATION = 25     # seconds, maximum recording time, also default value for startRecording()
+RECORDING_DURATION = 10     # seconds, maximum recording time, also default value for startRecording(), Google Speech API only accepts up to about 10-15 seconds
 LOOKAHEAD_DURATION = 0.5    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
 IDLE_RELEASE_TIME = 3       # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
 HOLD_TIME = 3               # seconds, minimum recording time after we started recording (autodetection)
