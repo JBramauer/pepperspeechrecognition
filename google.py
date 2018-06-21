@@ -56,8 +56,8 @@ class Recognizer :
             "key": key,
         }))
 
-        # set default request timeout to 10 seconds to avoid getting stuck
-        socket.setdefaulttimeout(20)
+        # set default request timeout to 30 seconds
+        socket.setdefaulttimeout(30)
 
         request = Request(url, data=audio_data,
                           headers={"Content-Type": "{}; rate={}".format(contentType, samplerate)})
