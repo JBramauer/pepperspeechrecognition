@@ -32,9 +32,9 @@ import traceback
 
 
 RECORDING_DURATION = 10     # seconds, maximum recording time, also default value for startRecording(), Google Speech API only accepts up to about 10-15 seconds
-LOOKAHEAD_DURATION = 0.5    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
-IDLE_RELEASE_TIME = 3       # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
-HOLD_TIME = 3               # seconds, minimum recording time after we started recording (autodetection)
+LOOKAHEAD_DURATION = 1.0    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
+IDLE_RELEASE_TIME = 2.0     # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
+HOLD_TIME = 3.0             # seconds, minimum recording time after we started recording (autodetection)
 SAMPLE_RATE = 48000         # Hz, be careful changing this, both google and Naoqi have requirements!
 
 CALIBRATION_DURATION = 4    # seconds, timespan during which calibration is performed (summing up RMS values and calculating mean)
@@ -384,10 +384,6 @@ class SpeechRecognitionModule(naoqi.ALModule):
         rms_data = np.divide(rms_data, 32768.0)
 
         return rms_data
-
-    def recognizer_callback(self, result):
-        # print "recognizer callback: " + result
-        return
 
     def recognize(self, data):
         # print 'sending %d bytes' % len(data)
