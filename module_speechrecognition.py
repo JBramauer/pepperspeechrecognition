@@ -46,6 +46,7 @@ DEFAULT_LANGUAGE = "en-us"  # RFC5646 language tag, e.g. "en-us", "de-de", "fr-f
 WRITE_WAV_FILE = False      # write the recorded audio to "out.wav" before sending it to google. intended for debugging purposes
 PRINT_RMS = False           # prints the calculated RMS value to the console, useful for setting the threshold
 
+PREBUFFER_WHEN_STOP = False # Fills pre-buffer with last samples when stopping recording. WARNING: has performance issues!
 
 
 class SpeechRecognitionModule(naoqi.ALModule):
@@ -238,8 +239,6 @@ class SpeechRecognitionModule(naoqi.ALModule):
                     if((overshoot > 0) and (len(self.preBuffer) > 0)):
                         self.preBufferLength -= len(self.preBuffer.pop(0)[0])
 
-                    #while(self.preBufferLength > self.lookaheadBufferSize and len(self.preBuffer) > 0):
-                    #    self.preBufferLength -= len(self.preBuffer.pop(0))
         except:
             # i did this so i could see the stracktrace as the thread otherwise just silently failed
             traceback.print_exc()
@@ -293,7 +292,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
         # initialize preBuffer with last samples to fix cut off words
         # loop through buffer and count samples until prebuffer is full
-        if (True):
+        # TODO: performance issues!
+        if (PREBUFFER_WHEN_STOP):
             sampleCounter = 0
             itemCounter = 0
 
@@ -441,6 +441,11 @@ class SpeechRecognitionModule(naoqi.ALModule):
             except RequestError, e:
                 item.success = False
                 print 'ERROR: ' + str(e)
+            except:
+                item.success = False
+                print 'ERROR: Unknown, probably timeout'
+
+            print 'INF: audio file length: ' + str(item.getAudioDuration()) + ' seconds'
 
             item.finished = time.time()
             duration = item.finished - item.created
@@ -459,6 +464,9 @@ class RecognitionJob:
         self.created = time.time()
         self.finished = 0
         self.success = False
+
+    def getAudioDuration(self):
+        return len(self.audio_data)/48000.0
 
 def main():
     """ Main entry point
