@@ -29,7 +29,6 @@ from naoqi import ALProxy
 from google import Recognizer, UnknownValueError, RequestError
 from numpy import sqrt, mean, square
 import traceback
-import Queue
 
 
 RECORDING_DURATION = 25     # seconds, maximum recording time, also default value for startRecording()
@@ -67,10 +66,6 @@ class SpeechRecognitionModule(naoqi.ALModule):
             # declare event to ALMemory so other modules can subscribe
             self.memory = naoqi.ALProxy("ALMemory")
             self.memory.declareEvent("SpeechRecognition")
-
-            # job queue that is processed by worker thread
-            self.jobQueue = Queue.Queue()
-            self.workerThreads = []
 
             # flag to indicate if subscribed to audio events
             self.isStarted = False
@@ -222,7 +217,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                         # initialize timestamp when we start recording
                         self.startRecordingTimestamp = timestamp
                     elif ((timestamp - self.startRecordingTimestamp) > self.recordingDuration):
-                        print('INF: stop after max recording duration')
+                        print('stop after max recording duration')
                         # check how long we are recording
                         self.stopRecordingAndRecognize()
 
@@ -230,7 +225,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                     # lastTimeRMSPeak is 0 if no peak occured
                     if (timestamp - self.lastTimeRMSPeak >= self.idleReleaseTime) and (
                             timestamp - self.startRecordingTimestamp >= self.holdTime):
-                        print ('INF: stopping after idle/hold time')
+                        print ('stopping after idle/hold time')
                         self.stopRecordingAndRecognize()
                 else:
                     # constantly record into prebuffer for lookahead
@@ -319,11 +314,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
         # start new worker thread to do the http call and some processing
         # copy slice to be thread safe!
         # TODO: make a job queue so we don't start a new thread for each recognition
-        # threading.Thread(target=self.recognize, args=(slice.copy(), )).start()
-
-        # Queue is thread safe
-        job = RecognitionJob(slice.copy())
-        self.jobQueue.put(job)
+        threading.Thread(target=self.recognize, args=(slice.copy(), )).start()
 
         # reset flag
         self.isRecording = False
@@ -394,6 +385,10 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
         return rms_data
 
+    def recognizer_callback(self, result):
+        # print "recognizer callback: " + result
+        return
+
     def recognize(self, data):
         # print 'sending %d bytes' % len(data)
 
@@ -430,45 +425,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
         self.preBuffer = []
         self.preBufferLength = 0
 
-    def worker(self):
-        while True:
-            item = self.jobQueue.get()
-            if item is None:
-                break
-
-            try:
-                item.result = self.recognize(item.audio_data)
-                item.success = True
-                print 'RESULT: ' + item.result
-            except UnknownValueError:
-                item.success = False
-                print 'ERROR: Recognition error'
-            except RequestError, e:
-                item.success = False
-                print 'ERROR: ' + str(e)
-            except:
-                item.success = False
-                print 'ERROR: Unknown, probably timeout'
-
-            print 'INF: audio file length: ' + str(item.getAudioDuration()) + ' seconds'
-
-            item.finished = time.time()
-            duration = item.finished - item.created
-
-            print('INF: Recognition time: ' + str(duration) + ' seconds')
-
-            self.jobQueue.task_done()
-
-
 # SpeechRecognition - end
 
-class RecognitionJob:
-    def __init__(self, audio_data):
-        self.audio_data = audio_data
-        self.result = ''
-        self.created = time.time()
-        self.finished = 0
-        self.success = False
 
     def getAudioDuration(self):
         return len(self.audio_data)/48000.0
@@ -524,29 +482,12 @@ def main():
     #SpeechRecognition.enableAutoDetection()
     #SpeechRecognition.startRecording()
 
-    workerThreads = []
-    num_worker_threads = 2
-
-    for i in range(num_worker_threads):
-        t = threading.Thread(target=SpeechRecognition.worker)
-        t.start()
-        workerThreads.append(t)
-
     try:
         while True:
             time.sleep(1)
     except KeyboardInterrupt:
         print
-        print "Interrupted by user, shutting down..."
-
-        # stop workers by giving them None jobs
-        for i in range(num_worker_threads):
-            SpeechRecognition.jobQueue.put(None)
-
-        # wait for all worker threads to stop
-        for t in workerThreads:
-            t.join()
-
+        print "Interrupted by user, shutting down"
         myBroker.shutdown()
         sys.exit(0)
 
