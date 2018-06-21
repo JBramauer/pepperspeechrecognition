@@ -26,7 +26,7 @@ import time
 import sys
 import threading
 from naoqi import ALProxy
-from google import Recognizer
+from google import Recognizer, UnknownValueError, RequestError
 from numpy import sqrt, mean, square
 import traceback
 import Queue
@@ -433,10 +433,14 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
             try:
                 item.result = self.recognize(item.audio_data)
+                item.success = True
                 print 'RESULT: ' + item.result
-            except:
+            except UnknownValueError:
                 item.success = False
                 print 'ERROR: Recognition error'
+            except RequestError, e:
+                item.success = False
+                print 'ERROR: ' + str(e)
 
             item.finished = time.time()
             duration = item.finished - item.created
