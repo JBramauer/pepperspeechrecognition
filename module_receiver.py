@@ -18,7 +18,7 @@ NAO_PORT = 9559 # Robot
 
 
 # NAO_IP = "127.0.0.1" # Virtual Machine
-NAO_IP = "nao.local" # Pepper
+NAO_IP = "nao.local" # Pepper default
 
 
 from optparse import OptionParser
@@ -28,7 +28,7 @@ import sys
 from naoqi import ALProxy
 
 
-class ReceiverTestModule(naoqi.ALModule):
+class BaseSpeechReceiverModule(naoqi.ALModule):
     """
     Use this object to get call back from the ALMemory of the naoqi world.
     Your callback needs to be a method with two parameter (variable name, value).
@@ -41,11 +41,11 @@ class ReceiverTestModule(naoqi.ALModule):
             self.strNaoIp = strNaoIp
 
         except BaseException, err:
-            print( "ERR: abcdk.naoqitools.ReceiverModule: loading error: %s" % str(err) )
+            print( "ERR: ReceiverModule: loading error: %s" % str(err) )
 
     # __init__ - end
     def __del__( self ):
-        print( "INF: abcdk.naoqitools.ReceiverModule.__del__: cleaning everything" )
+        print( "INF: ReceiverModule.__del__: cleaning everything" )
         self.stop()
 
     def start( self ):
@@ -62,7 +62,7 @@ class ReceiverTestModule(naoqi.ALModule):
         print( "INF: ReceiverModule: stopped!" )
 
     def version( self ):
-        return "0.1"
+        return "1.1"
 
     def processRemote(self, signalName, message):
         # Do something with the received speech recognition result
@@ -99,7 +99,7 @@ def main():
        pport)       # parent broker port
 
     try:
-        p = ALProxy("ReceiverTestModule")
+        p = ALProxy("BaseSpeechReceiverModule")
         p.exit()  # kill previous instance
     except:
         pass
@@ -108,17 +108,32 @@ def main():
     # Warning: ReceiverModule must be a global variable
     # The name given to the constructor must be the name of the
     # variable
-    global ReceiverTestModule
-    ReceiverTestModule = ReceiverTestModule("ReceiverTestModule", pip)
-    ReceiverTestModule.start()
+    global BaseSpeechReceiverModule
+    BaseSpeechReceiverModule = BaseSpeechReceiverModule("BaseSpeechReceiverModule", pip)
+    BaseSpeechReceiverModule.start()
 
-    SpeechRecognition = ALProxy("SpeechRecognition")
-    SpeechRecognition.start()
-    #SpeechRecognition.setLanguage("de-de")
-    SpeechRecognition.calibrate()
-    SpeechRecognition.enableAutoDetection()
+    if(False):
+        #one-shot recording for at least 5 seconds
+        SpeechRecognition = ALProxy("SpeechRecognition")
+        SpeechRecognition.start()
+        SpeechRecognition.setHoldTime(5)
+        SpeechRecognition.setIdleReleaseTime(1.7)
+        SpeechRecognition.setMaxRecordingDuration(10)
+        SpeechRecognition.startRecording()
 
-    #SpeechRecognition.startRecording(20) # use this to start recording for 20 seconds (intended to use without auto-detection)
+    else:
+        # auto-detection
+        SpeechRecognition = ALProxy("SpeechRecognition")
+        SpeechRecognition.start()
+        SpeechRecognition.setHoldTime(2.5)
+        SpeechRecognition.setIdleReleaseTime(1.0)
+        SpeechRecognition.setMaxRecordingDuration(10)
+        SpeechRecognition.setLookaheadDuration(0.5)
+        #SpeechRecognition.setLanguage("de-de")
+        #SpeechRecognition.calibrate()
+        SpeechRecognition.setAutoDetectionThreshold(5)
+        SpeechRecognition.enableAutoDetection()
+        #SpeechRecognition.startRecording()
 
     try:
         while True:

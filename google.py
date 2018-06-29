@@ -24,6 +24,7 @@
 from urllib import urlencode
 from urllib2 import Request, urlopen, URLError, HTTPError
 import json
+import socket
 
 class RequestError(Exception): pass
 
@@ -54,6 +55,9 @@ class Recognizer :
             "lang": language,
             "key": key,
         }))
+
+        # set default request timeout to 30 seconds
+        socket.setdefaulttimeout(30)
 
         request = Request(url, data=audio_data,
                           headers={"Content-Type": "{}; rate={}".format(contentType, samplerate)})
@@ -89,4 +93,4 @@ class Recognizer :
             best_hypothesis = actual_result["alternative"][0]
         if "transcript" not in best_hypothesis:
             raise UnknownValueError()
-        return best_hypothesis["transcript"]
+        return best_hypothesis["transcript"].encode("utf-8")

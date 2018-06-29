@@ -62,5 +62,5 @@ fabric.properties
 venv/
 
 # recorded debug audio files
-out.raw
-out.wav
+*.raw
+*.wav

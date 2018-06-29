@@ -13,6 +13,7 @@
 # License: MIT
 #
 ###########################################################
+import socket
 
 from raw_to_wav import rawToWav
 
@@ -26,14 +27,15 @@ import time
 import sys
 import threading
 from naoqi import ALProxy
-from google import Recognizer
+from google import Recognizer, UnknownValueError, RequestError
 from numpy import sqrt, mean, square
 import traceback
 
 
-RECORDING_DURATION = 25     # seconds, maximum recording time, also default value for startRecording()
-LOOKAHEAD_DURATION = 0.5    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
-IDLE_RELEASE_TIME = 3       # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
+RECORDING_DURATION = 10     # seconds, maximum recording time, also default value for startRecording(), Google Speech API only accepts up to about 10-15 seconds
+LOOKAHEAD_DURATION = 1.0    # seconds, for auto-detect mode: amount of seconds before the threshold trigger that will be included in the request
+IDLE_RELEASE_TIME = 2.0     # seconds, for auto-detect mode: idle time (RMS below threshold) after which we stop recording and recognize
+HOLD_TIME = 3.0             # seconds, minimum recording time after we started recording (autodetection)
 SAMPLE_RATE = 48000         # Hz, be careful changing this, both google and Naoqi have requirements!
 
 CALIBRATION_DURATION = 4    # seconds, timespan during which calibration is performed (summing up RMS values and calculating mean)
@@ -41,13 +43,10 @@ CALIBRATION_THRESHOLD_FACTOR = 1.5  # factor the calculated mean RMS gets multip
 
 DEFAULT_LANGUAGE = "en-us"  # RFC5646 language tag, e.g. "en-us", "de-de", "fr-fr",... <http://stackoverflow.com/a/14302134>
 
-WRITE_WAV_FILE = True       # write the recorded audio to "out.wav" before sending it to google. intended for debugging purposes
+WRITE_WAV_FILE = False      # write the recorded audio to "out.wav" before sending it to google. intended for debugging purposes
 PRINT_RMS = False           # prints the calculated RMS value to the console, useful for setting the threshold
 
-
-# just a constant calculation we do upfront
-LOOKAHEAD_BUFFER_SIZE = LOOKAHEAD_DURATION * SAMPLE_RATE
-
+PREBUFFER_WHEN_STOP = False # Fills pre-buffer with last samples when stopping recording. WARNING: has performance issues!
 
 
 class SpeechRecognitionModule(naoqi.ALModule):
@@ -93,7 +92,16 @@ class SpeechRecognitionModule(naoqi.ALModule):
             # audio buffer
             self.buffer = []
             self.preBuffer = []
-            self.preBufferLength = 0
+            self.preBufferLength = 0    # length in samples (len(self.preBuffer) just counts entries)
+
+            # init parameters
+            self.language = DEFAULT_LANGUAGE
+            self.idleReleaseTime = IDLE_RELEASE_TIME
+            self.holdTime = HOLD_TIME
+            self.lookaheadBufferSize = LOOKAHEAD_DURATION * SAMPLE_RATE
+
+            # counter for wav file output
+            self.fileCounter = 0
 
         except BaseException, err:
             print( "ERR: SpeechRecognitionModule: loading error: %s" % str(err) )
@@ -119,19 +127,27 @@ class SpeechRecognitionModule(naoqi.ALModule):
         audio.setClientPreferences( self.getName(),  SAMPLE_RATE, nNbrChannelFlag, nDeinterleave ) # setting same as default generate a bug !?!
         audio.subscribe( self.getName() )
 
-    def stop( self ):
-
-        if(self.isStarted == False):
+    def pause(self):
+        print("INF: SpeechRecognitionModule.pause: stopping")
+        if (self.isStarted == False):
             print("INF: SpeechRecognitionModule.stop: not running")
             return
 
-        audio = naoqi.ALProxy( "ALAudioDevice")
-        audio.unsubscribe( self.getName() )
+        self.isStarted = False
 
-        print( "INF: SpeechRecognitionModule: stopped!" )
+        audio = naoqi.ALProxy("ALAudioDevice", self.strNaoIp, NAO_PORT)
+        audio.unsubscribe(self.getName())
+
+        print("INF: SpeechRecognitionModule: stopped!")
+
+    def stop( self ):
+        self.pause()
 
     def processRemote( self, nbOfChannels, nbrOfSamplesByChannel, aTimeStamp, buffer ):
         #print("INF: SpeechRecognitionModule: Processing '%s' channels" % nbOfChannels)
+
+        # calculate a decimal seconds timestamp
+        timestamp = float (str(aTimeStamp[0]) + "."  + str(aTimeStamp[1]))
 
         # put whole function in a try/except to be able to see the stracktrace
         try:
@@ -140,19 +156,28 @@ class SpeechRecognitionModule(naoqi.ALModule):
             aSoundData = np.reshape( aSoundDataInterlaced, (nbOfChannels, nbrOfSamplesByChannel), 'F' )
 
             # compute RMS, handle autodetection and calibration
-            if( self.isCalibrating | self.isAutoDetectionEnabled):
+            if( self.isCalibrating or self.isAutoDetectionEnabled or self.isRecording):
 
                 # compute the rms level on front mic
                 rmsMicFront = self.calcRMSLevel(self.convertStr2SignedInt(aSoundData[0]))
 
+                if (rmsMicFront >= self.autoDetectionThreshold):
+                    # save timestamp when we last had and RMS > threshold
+                    self.lastTimeRMSPeak = timestamp
+
+                    # start recording if we are not doing so already
+                    if (self.isAutoDetectionEnabled and not self.isRecording and not self.isCalibrating):
+                        self.startRecording()
+
+                # perform calibration
                 if( self.isCalibrating):
 
                     if(self.startCalibrationTimestamp <= 0):
                         # we are starting to calibrate, save timestamp
                         # to track how long we are doing this
-                        self.startCalibrationTimestamp = aTimeStamp[0]
+                        self.startCalibrationTimestamp = timestamp
 
-                    elif(aTimeStamp[0] - self.startCalibrationTimestamp >= CALIBRATION_DURATION):
+                    elif(timestamp - self.startCalibrationTimestamp >= CALIBRATION_DURATION):
                         # time's up, we're done!
                         self.stopCalibration()
 
@@ -161,22 +186,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
                     # to calculate mean afterwards
                     self.rmsSum += rmsMicFront
                     self.framesCount = self.framesCount + 1
-                else :
-                    # handle auto detection here
-                    if (self.isAutoDetectionEnabled):
 
-                        if(rmsMicFront >= self.autoDetectionThreshold):
-                            # save timestamp when we last had and RMS > threshold
-                            self.lastTimeRMSPeak = aTimeStamp[0]
-
-                            # start recording if we are not doing so already
-                            if(not self.isRecording):
-                                self.startRecording()
-
-                        elif(self.isRecording and self.lastTimeRMSPeak > 0 and (aTimeStamp[0] - self.lastTimeRMSPeak  >= IDLE_RELEASE_TIME)):
-                            # rms has not been > threshold for at least idle time
-                            # so stop recording
-                            self.stopRecordingAndRecognize()
 
                 if(PRINT_RMS):
                     # for debug purposes
@@ -199,24 +209,37 @@ class SpeechRecognitionModule(naoqi.ALModule):
                 if( aPeakValue > 16000 ):
                     print( "Peak: %s" % aPeakValue )
 
-            if(self.isRecording):
-                # write to buffer
-                self.buffer.append(aSoundData)
+            if(not self.isCalibrating):
+                if(self.isRecording):
+                    # write to buffer
+                    self.buffer.append(aSoundData)
 
-                if (self.startRecordingTimestamp <= 0):
-                    # initialize timestamp when we start recording
-                    self.startRecordingTimestamp = aTimeStamp[0]
-                elif ((aTimeStamp[0] - self.startRecordingTimestamp) > self.recordingDuration):
-                    # check how long we are recording
-                    self.stopRecordingAndRecognize()
-            else:
-                # constantly record into prebuffer for lookahead
-                self.preBuffer.append(aSoundData)
-                self.preBufferLength = self.preBufferLength + nbrOfSamplesByChannel
+                    if (self.startRecordingTimestamp <= 0):
+                        # initialize timestamp when we start recording
+                        self.startRecordingTimestamp = timestamp
+                    elif ((timestamp - self.startRecordingTimestamp) > self.recordingDuration):
+                        print('stop after max recording duration')
+                        # check how long we are recording
+                        self.stopRecordingAndRecognize()
 
-                # remove first (oldest) item if the buffer gets bigger than required
-                if(self.preBufferLength > LOOKAHEAD_BUFFER_SIZE):
-                    self.preBufferLength -= len(self.preBuffer.pop(0))
+                    # stop recording after idle time (and recording at least hold time)
+                    # lastTimeRMSPeak is 0 if no peak occured
+                    if (timestamp - self.lastTimeRMSPeak >= self.idleReleaseTime) and (
+                            timestamp - self.startRecordingTimestamp >= self.holdTime):
+                        print ('stopping after idle/hold time')
+                        self.stopRecordingAndRecognize()
+                else:
+                    # constantly record into prebuffer for lookahead
+                    self.preBuffer.append(aSoundData)
+                    self.preBufferLength += len(aSoundData[0])
+
+                    # remove first (oldest) item if the buffer gets bigger than required
+                    # removes one block of samples as we store a list of lists...
+                    overshoot = (self.preBufferLength - self.lookaheadBufferSize)
+
+                    if((overshoot > 0) and (len(self.preBuffer) > 0)):
+                        self.preBufferLength -= len(self.preBuffer.pop(0)[0])
+
         except:
             # i did this so i could see the stracktrace as the thread otherwise just silently failed
             traceback.print_exc()
@@ -230,18 +253,16 @@ class SpeechRecognitionModule(naoqi.ALModule):
         return rms
 
     def version( self ):
-        return "1.0"
+        return "1.1"
 
 
-    # use this method to manually start recording (without autodetection) for a given time
-    # if autodetection is enabled this will start recording but stop after the signal is below
-    # the threshold for IDLE_RELEASE_TIME seconds
-    def startRecording(self, duration=RECORDING_DURATION):
+    # use this method to manually start recording (works with both autodetection enabled or disabled)
+    # the recording will stop after the signal is below the threshold for IDLE_RELEASE_TIME seconds,
+    # but will at least record for HOLD_TIME seconds
+    def startRecording(self):
         if(self.isRecording):
             print("INF: SpeechRecognitionModule.startRecording: already recording")
             return
-
-        self.recordingDuration = duration
 
         print("INF: Starting to record audio")
 
@@ -249,8 +270,9 @@ class SpeechRecognitionModule(naoqi.ALModule):
         self.startRecordingTimestamp = 0
         self.lastTimeRMSPeak = 0
         self.buffer = self.preBuffer
-        self.preBuffer = []
-        self.preBufferLength = 0
+
+        #self.preBuffer = []
+
         self.isRecording = True
 
         return
@@ -268,6 +290,27 @@ class SpeechRecognitionModule(naoqi.ALModule):
         # buffer is a list of nparrays we now concat into one array
         # and the slice out the first mic channel
         slice = np.concatenate(self.buffer, axis=1)[0]
+
+        # initialize preBuffer with last samples to fix cut off words
+        # loop through buffer and count samples until prebuffer is full
+        # TODO: performance issues!
+        if (PREBUFFER_WHEN_STOP):
+            sampleCounter = 0
+            itemCounter = 0
+
+            for i in reversed(self.preBuffer):
+                sampleCounter += len(i[0])
+
+                if(sampleCounter > self.lookaheadBufferSize):
+                    break
+
+                itemCounter += 1
+
+            start = len(self.buffer) - itemCounter
+            self.preBuffer = self.buffer[start:]
+        else:
+            # don't copy to prebuffer
+            self.preBuffer = []
 
         # start new worker thread to do the http call and some processing
         # copy slice to be thread safe!
@@ -303,9 +346,8 @@ class SpeechRecognitionModule(naoqi.ALModule):
         print 'calibration done, RMS threshold is: ' + str(self.threshold)
         return
 
-    def enableAutoDetection(self, maxDuration=RECORDING_DURATION):
+    def enableAutoDetection(self):
         self.isAutoDetectionEnabled = True
-        self.recordingDuration = maxDuration
         print("INF: autoDetection enabled")
         return
 
@@ -344,32 +386,56 @@ class SpeechRecognitionModule(naoqi.ALModule):
 
         return rms_data
 
-    def recognizer_callback(self, result):
-        # print "recognizer callback: " + result
-        return
-
     def recognize(self, data):
         # print 'sending %d bytes' % len(data)
 
         if (WRITE_WAV_FILE):
             # write to file
-            outfile = open("out.raw", "wb")
+            filename = "out" + str(self.fileCounter)
+            self.fileCounter += 1
+            outfile = open(filename + ".raw", "wb")
             data.tofile(outfile)
             outfile.close()
-            rawToWav("out")
+            rawToWav(filename)
 
         buffer = np.getbuffer(data)
 
         r = Recognizer()
-        result = r.recognize_google(audio_data=buffer, samplerate=SAMPLE_RATE, language=self.language)
-        self.memory.raiseEvent("SpeechRecognition", str(result))
-        return result
+        try:
+            result = r.recognize_google(audio_data=buffer, samplerate=SAMPLE_RATE, language=self.language)
+            self.memory.raiseEvent("SpeechRecognition", result)
+            print 'RESULT: ' + result
+        except UnknownValueError:
+            print 'ERR: Recognition error'
+        except RequestError, e:
+            print 'ERR: ' + str(e)
+        except socket.timeout:
+            print 'ERR: Socket timeout'
+        except:
+            print 'ERR: Unknown, probably timeout ' + str(sys.exc_info()[0])
 
     def setAutoDetectionThreshold(self, threshold):
         self.autoDetectionThreshold = threshold
 
+    def setIdleReleaseTime(self, releaseTime):
+        self.idleReleaseTime = releaseTime
+
+    def setHoldTime(self, holdTime):
+        self.holdTime = holdTime
+
+    def setMaxRecordingDuration(self, duration):
+        self.recordingDuration = duration
+
+    def setLookaheadDuration(self, duration):
+        self.lookaheadBufferSize = duration * SAMPLE_RATE
+        self.preBuffer = []
+        self.preBufferLength = 0
+
 # SpeechRecognition - end
 
+
+    def getAudioDuration(self):
+        return len(self.audio_data)/48000.0
 
 def main():
     """ Main entry point
