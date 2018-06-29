@@ -69,8 +69,8 @@ SpeechRecognition = ALProxy("SpeechRecognition")
 SpeechRecognition.start()
 SpeechRecognition.setLanguage("de-de")
 
-# records for 5 seconds and then tries to recognize
-SpeechRecognition.startRecoring(5) 
+# starts immediately, records for at least HOLD_TIME seconds and then tries to recognize
+SpeechRecognition.startRecoring() 
 ```
 
 You can use [module_receiver.py](module_receiver.py) as a template for implementing your own module.
@@ -92,7 +92,7 @@ def processRemote(self, signalName, message):
 ```
 
 ### ROS Module
-A simple ROS (Robot Operating System) module [is provided](ros_receiver.py), that uses [rospy](http://wiki.ros.org/rospy) to publish a ROS event whenever speech is recognized, carrying the recognized string as data.
+A simple ROS (Robot Operating System) module [is provided](ros_receiver.py), that uses [rospy](http://wiki.ros.org/rospy) to publish a ROS message whenever speech is recognized, carrying the recognized string as data.
 
 ## Dependencies
 The speechrecognition module was built to be able to run ON Pepper (and you can't easily install 3rd party libraries there, also we need to be efficient), so it's only dependencies are
