@@ -28,7 +28,7 @@ import sys
 from naoqi import ALProxy
 
 
-class ReceiverTestModule(naoqi.ALModule):
+class BaseSpeechReceiverModule(naoqi.ALModule):
     """
     Use this object to get call back from the ALMemory of the naoqi world.
     Your callback needs to be a method with two parameter (variable name, value).
@@ -41,11 +41,11 @@ class ReceiverTestModule(naoqi.ALModule):
             self.strNaoIp = strNaoIp
 
         except BaseException, err:
-            print( "ERR: abcdk.naoqitools.ReceiverModule: loading error: %s" % str(err) )
+            print( "ERR: ReceiverModule: loading error: %s" % str(err) )
 
     # __init__ - end
     def __del__( self ):
-        print( "INF: abcdk.naoqitools.ReceiverModule.__del__: cleaning everything" )
+        print( "INF: ReceiverModule.__del__: cleaning everything" )
         self.stop()
 
     def start( self ):
@@ -99,7 +99,7 @@ def main():
        pport)       # parent broker port
 
     try:
-        p = ALProxy("ReceiverTestModule")
+        p = ALProxy("BaseSpeechReceiverModule")
         p.exit()  # kill previous instance
     except:
         pass
@@ -108,9 +108,9 @@ def main():
     # Warning: ReceiverModule must be a global variable
     # The name given to the constructor must be the name of the
     # variable
-    global ReceiverTestModule
-    ReceiverTestModule = ReceiverTestModule("ReceiverTestModule", pip)
-    ReceiverTestModule.start()
+    global BaseSpeechReceiverModule
+    BaseSpeechReceiverModule = BaseSpeechReceiverModule("BaseSpeechReceiverModule", pip)
+    BaseSpeechReceiverModule.start()
 
     if(False):
         #one-shot recording for at least 5 seconds
