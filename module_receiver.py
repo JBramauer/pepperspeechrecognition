@@ -62,7 +62,7 @@ class BaseSpeechReceiverModule(naoqi.ALModule):
         print( "INF: ReceiverModule: stopped!" )
 
     def version( self ):
-        return "0.1"
+        return "1.1"
 
     def processRemote(self, signalName, message):
         # Do something with the received speech recognition result

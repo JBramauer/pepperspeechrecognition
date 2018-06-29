@@ -253,7 +253,7 @@ class SpeechRecognitionModule(naoqi.ALModule):
         return rms
 
     def version( self ):
-        return "1.0"
+        return "1.1"
 
 
     # use this method to manually start recording (works with both autodetection enabled or disabled)
